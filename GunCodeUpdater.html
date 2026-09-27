@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>改枪码更新工具</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 16px 60px;
+  }
+  h1 { font-size: 24px; letter-spacing: 2px; margin-bottom: 8px; color: #f8fafc; text-shadow: 0 0 20px rgba(56,189,248,.35); }
+
+  .cols {
+    width:100%; max-width:820px; display:flex; gap:16px;
+  }
+  .col {
+    flex:1; background:#1e293b; border:1px solid #334155; border-radius:12px;
+    padding:16px;
+  }
+  .col h3 { font-size:15px; margin-bottom:10px; color:#f8fafc; }
+  .col h3 small { color:#64748b; font-weight:normal; }
+  .file-btn {
+    display:block; width:100%; padding:12px; font-size:15px; color:#f8fafc;
+    background:#334155; border:1px dashed #64748b; border-radius:10px;
+    cursor:pointer; transition:border-color .2s, background .2s; text-align:center;
+  }
+  .file-btn:hover { border-color:#38bdf8; background:#3b4a63; }
+  input[type=file] { display:none; }
+
+  .meta { margin-top:10px; font-size:12px; color:#94a3b8; min-height:16px; line-height:1.5; }
+  .meta.ok  { color:#4ade80; }
+  .meta.bad { color:#f87171; }
+
+  .gen-status { width:100%; max-width:820px; margin-top:8px; display:flex; justify-content:center; }
+  #genBtn {
+    padding:14px 40px; font-size:16px; border-radius:999px; cursor:pointer;
+    background:linear-gradient(135deg,#0ea5e9,#38bdf8); color:#082f49; font-weight:700;
+    border:none; transition:transform .12s, opacity .2s; pointer-events:none; opacity:.4;
+  }
+  #genBtn.on { pointer-events:auto; opacity:1; }
+  #genBtn.on:hover { transform:translateY(-2px); }
+
+  #status { width:100%; max-width:820px; text-align:center; margin-top:14px; font-size:14px; color:#e2e8f0; min-height:20px; }
+</style>
+</head>
+<body>
+
+<h1>改枪码更新工具</h1>
+
+<div class="cols">
+  <div class="col">
+    <h3>模板文件</h3>
+    <button type="button" class="file-btn" id="btnA">选择 .html</button>
+    <input type="file" id="fileA" accept=".html,.htm,text/html">
+    <div class="meta" id="metaA"></div>
+  </div>
+  <div class="col">
+    <h3>新数据库</h3>
+    <button type="button" class="file-btn" id="btnB">选择 .txt</button>
+    <input type="file" id="fileB" accept=".txt,.dat,.csv,text/plain">
+    <div class="meta" id="metaB"></div>
+  </div>
+</div>
+
+<div class="gen-status">
+  <button type="button" id="genBtn" disabled>更新并下载</button>
+</div>
+<div id="status"></div>
+
+<script>
+const MARK = "const EMBEDDED_DB = `";
+
+let tplText = "";
+let dataText = "";
+
+function setMeta(el, msg, cls) {
+  el.textContent = msg;
+  el.className = "meta" + (cls ? " " + cls : "");
+}
+function updateGenBtn() {
+  const ok = tplText && dataText;
+  const b = document.getElementById("genBtn");
+  b.disabled = !ok;
+  b.classList.toggle("on", ok);
+}
+
+document.getElementById("btnA").addEventListener("click", () => document.getElementById("fileA").click());
+document.getElementById("fileA").addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    tplText = String(r.result);
+    setMeta(document.getElementById("metaA"), "已读取：" + f.name + "（" + tplText.length + " 字节）", "ok");
+    if (!tplText.includes(MARK)) {
+      setMeta(document.getElementById("metaA"), "警告：这个文件里找不到 EMBEDDED_DB 标记，可能不是 GunCodeSearch.html", "bad");
+      tplText = "";
+    }
+    updateGenBtn();
+  };
+  r.onerror = () => setMeta(document.getElementById("metaA"), "读取失败", "bad");
+  r.readAsText(f, "utf-8");
+  e.target.value = "";
+});
+
+document.getElementById("btnB").addEventListener("click", () => document.getElementById("fileB").click());
+document.getElementById("fileB").addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    dataText = String(r.result);
+    let n = 0;
+    for (const raw of dataText.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line) continue;
+      const idx = line.lastIndexOf("-");
+      const before = line.slice(0, idx).trim();
+      const sp = before.indexOf(" ");
+      if (sp > 0 && sp < idx) n++;
+    }
+    setMeta(document.getElementById("metaB"), "已读取：" + f.name + "，识别到 " + n + " 条记录", n ? "ok" : "bad");
+    if (!n) dataText = "";
+    updateGenBtn();
+  };
+  r.onerror = () => setMeta(document.getElementById("metaB"), "读取失败", "bad");
+  r.readAsText(f, "utf-8");
+  e.target.value = "";
+});
+
+function escapeForTemplate(raw) {
+  return raw
+    .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
+    .replace(/\$\{/g, "\\${");
+}
+function stripTrailingNewline(s) {
+  return s.replace(/\r?\n\s*$/, "").replace(/\r$/, "");
+}
+
+document.getElementById("genBtn").addEventListener("click", () => {
+  const status = document.getElementById("status");
+  status.textContent = "";
+  try {
+    if (!tplText || !dataText) throw new Error("请先选择模板和数据的均已选择");
+
+    const start = tplText.indexOf(MARK);
+    if (start < 0) throw new Error("模板中找不到 EMBEDDED_DB 标记");
+    const contentStart = start + MARK.length;
+    const closeIdx = tplText.indexOf("`", contentStart);
+    if (closeIdx < 0) throw new Error("模板数据段格式异常，找不到闭合反引号");
+
+    const newPayload = escapeForTemplate(stripTrailingNewline(dataText));
+    const newBlock = "const EMBEDDED_DB = `" + newPayload + "`;";
+    const newHtml = tplText.slice(0, start) + newBlock + tplText.slice(closeIdx + 1);
+
+    const blob = new Blob([newHtml], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "GunCodeSearch.html";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+    status.textContent = "已生成并开始下载：GunCodeSearch.html（新数据已内嵌）";
+  } catch (err) {
+    status.textContent = "出错了：" + err.message;
+  }
+});
+</script>
+</body>
+</html>
